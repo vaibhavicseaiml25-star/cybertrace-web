@@ -40,6 +40,7 @@ export default function App() {
   const [activeAlert, setActiveAlert] = useState(null);
   const [autoMonitor, setAutoMonitor] = useState(true);
   const latestIncidentIdRef = useRef(null);
+  const announcedIdsRef = useRef(new Set()); // Taaki ek attack dubara repeat na ho
 
   // Graph Traversal States
   const [startNode, setStartNode] = useState('IP-185.220.101.4');
@@ -49,12 +50,23 @@ export default function App() {
   const [highlightedEdges, setHighlightedEdges] = useState([]);
   const [traversalLog, setTraversalLog] = useState('');
 
+  // Turant voice aur alarm rokne ka function (Trace dabane ya banner close karne par)
+  const stopAlertVoice = () => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    if (typeof socSound.stopAlarm === 'function') {
+      socSound.stopAlarm();
+    }
+  };
+
   // Toggle SOC Background Audio
   const toggleSound = () => {
     if (!soundEnabled) {
       socSound.startAmbient();
       setSoundEnabled(true);
     } else {
+      stopAlertVoice();
       socSound.stopAmbient();
       setSoundEnabled(false);
     }
@@ -74,15 +86,22 @@ export default function App() {
       setGraph(graphRes.data);
       setBackendConnected(true);
 
-      // Detect if a brand-new Active Critical incident arrived from live org agent or autonomous sensor
+      // Pehli baar load hone par saari existing IDs ko mark kar lein taaki woh repeat na hon
+      if (!checkNewBreach) {
+        incRes.data.forEach(item => announcedIdsRef.current.add(item.id));
+      }
+
+      // Sirf brand-new incident par alert bajayein jo pehle kabhi nahi bola gaya
       if (incRes.data.length > 0) {
         const newest = incRes.data[0];
         if (
           checkNewBreach &&
           latestIncidentIdRef.current &&
           newest.id !== latestIncidentIdRef.current &&
+          !announcedIdsRef.current.has(newest.id) &&
           newest.status === 'Active'
         ) {
+          announcedIdsRef.current.add(newest.id);
           const msg = `Warning! Cyberattack detected on ${newest.target_node} in ${newest.department} department. ${newest.title}.`;
           setActiveAlert({
             id: newest.id,
@@ -91,7 +110,10 @@ export default function App() {
             department: newest.department,
             description: newest.description,
           });
-          socSound.triggerCyberAttackAlarm(msg);
+          if (soundEnabled) {
+            stopAlertVoice();
+            socSound.triggerCyberAttackAlarm(msg);
+          }
         }
         latestIncidentIdRef.current = newest.id;
       }
@@ -111,7 +133,7 @@ export default function App() {
       fetchTelemetry(true);
     }, 4000);
     return () => clearInterval(timer);
-  }, [autoMonitor]);
+  }, [autoMonitor, soundEnabled]);
 
   // Simulate an Organization Cyberattack on Demand
   const handleSimulateAttack = async () => {
@@ -119,6 +141,7 @@ export default function App() {
       const res = await axios.post(`${API_BASE}/api/telemetry/simulate-attack`);
       if (res.data?.breach_detected) {
         const inc = res.data.incident;
+        announcedIdsRef.current.add(inc.id);
         setActiveAlert({
           id: inc.id,
           title: inc.title,
@@ -126,6 +149,7 @@ export default function App() {
           department: inc.department,
           description: inc.vector,
         });
+        stopAlertVoice();
         socSound.triggerCyberAttackAlarm(res.data.alert_message);
         await fetchTelemetry(false);
         latestIncidentIdRef.current = inc.id;
@@ -146,6 +170,8 @@ export default function App() {
   };
 
   const runTraversal = async () => {
+    stopAlertVoice(); // Graph trace chalate hi awaaz band
+    setActiveAlert(null);
     try {
       const res = await axios.post(`${API_BASE}/api/graph/traverse`, {
         start_node: startNode,
@@ -189,6 +215,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => {
+                stopAlertVoice(); // Trace dabate hi awaaz turant band
                 setStartNode(activeAlert.target);
                 setActiveTab('explorer');
                 setActiveAlert(null);
@@ -197,7 +224,13 @@ export default function App() {
             >
               Trace Node in Graph
             </button>
-            <button onClick={() => setActiveAlert(null)} className="p-1 hover:bg-rose-700 rounded">
+            <button
+              onClick={() => {
+                stopAlertVoice(); // Cross dabane par bhi awaaz band
+                setActiveAlert(null);
+              }}
+              className="p-1 hover:bg-rose-700 rounded"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -251,8 +284,8 @@ export default function App() {
           <button
             onClick={toggleSound}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition ${soundEnabled
-                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+              ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+              : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
               }`}
             title="Enable SOC Background Radar Audio & Voice Alerts"
           >
@@ -304,10 +337,10 @@ export default function App() {
                       <div
                         key={node.id}
                         className={`p-3 rounded-lg border flex items-center justify-between ${node.status === 'Compromised'
-                            ? 'bg-rose-950/30 border-rose-500/50'
-                            : node.status === 'Warning'
-                              ? 'bg-amber-950/20 border-amber-500/40'
-                              : 'bg-slate-900/70 border-slate-800'
+                          ? 'bg-rose-950/30 border-rose-500/50'
+                          : node.status === 'Warning'
+                            ? 'bg-amber-950/20 border-amber-500/40'
+                            : 'bg-slate-900/70 border-slate-800'
                           }`}
                       >
                         <div>
@@ -324,10 +357,10 @@ export default function App() {
                         <div className="text-right">
                           <span
                             className={`text-[11px] font-bold px-2 py-0.5 rounded ${node.status === 'Compromised'
-                                ? 'bg-rose-500/20 text-rose-400'
-                                : node.status === 'Warning'
-                                  ? 'bg-amber-500/20 text-amber-400'
-                                  : 'bg-emerald-500/15 text-emerald-400'
+                              ? 'bg-rose-500/20 text-rose-400'
+                              : node.status === 'Warning'
+                                ? 'bg-amber-500/20 text-amber-400'
+                                : 'bg-emerald-500/15 text-emerald-400'
                               }`}
                           >
                             {node.status.toUpperCase()}
@@ -377,10 +410,10 @@ export default function App() {
                       <div className="flex flex-col items-end shrink-0 gap-1.5">
                         <span
                           className={`text-[11px] px-2.5 py-0.5 rounded font-bold ${inc.severity === 'Critical'
-                              ? 'bg-rose-500/20 text-rose-400'
-                              : inc.severity === 'High'
-                                ? 'bg-amber-500/20 text-amber-400'
-                                : 'bg-blue-500/20 text-blue-400'
+                            ? 'bg-rose-500/20 text-rose-400'
+                            : inc.severity === 'High'
+                              ? 'bg-amber-500/20 text-amber-400'
+                              : 'bg-blue-500/20 text-blue-400'
                             }`}
                         >
                           {inc.severity} • Risk {inc.risk_score}
@@ -452,10 +485,10 @@ export default function App() {
                       <td className="p-3.5">
                         <span
                           className={`px-2 py-1 rounded font-bold ${inc.severity === 'Critical'
-                              ? 'bg-rose-500/20 text-rose-400'
-                              : inc.severity === 'High'
-                                ? 'bg-amber-500/20 text-amber-400'
-                                : 'bg-blue-500/20 text-blue-400'
+                            ? 'bg-rose-500/20 text-rose-400'
+                            : inc.severity === 'High'
+                              ? 'bg-amber-500/20 text-amber-400'
+                              : 'bg-blue-500/20 text-blue-400'
                             }`}
                         >
                           {inc.severity}
