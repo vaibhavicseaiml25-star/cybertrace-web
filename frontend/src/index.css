@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #090c10;
+  color: #e7eef3;
+  font-family: var(--font-sans);
+}
+
+button,
+select,
+input {
+  font: inherit;
+}
+
+.soc-grid {
+  background-color: #090c10;
+  background-image:
+    linear-gradient(rgba(140, 176, 196, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(140, 176, 196, 0.045) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.panel {
+  background: rgba(16, 21, 27, 0.92);
+  border: 1px solid #24303a;
+}
+
+select option {
+  background: #12181e;
+  color: #e7eef3;
+}
